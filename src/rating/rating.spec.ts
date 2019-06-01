@@ -1,5 +1,6 @@
 import {TestBed, ComponentFixture, inject, async, fakeAsync, tick} from '@angular/core/testing';
 import {createGenericTestComponent} from '../test/common';
+import {Key} from '../util/key';
 
 import {Component, DebugElement} from '@angular/core';
 import {FormsModule, ReactiveFormsModule, FormGroup, FormControl, Validators} from '@angular/forms';
@@ -11,15 +12,6 @@ import {By} from '@angular/platform-browser';
 
 const createTestComponent = (html: string) =>
     createGenericTestComponent(html, TestComponent) as ComponentFixture<TestComponent>;
-
-enum Key {
-  End = 35,
-  Home = 36,
-  ArrowLeft = 37,
-  ArrowUp = 38,
-  ArrowRight = 39,
-  ArrowDown = 40
-}
 
 function createKeyDownEvent(key: number) {
   const event = {which: key, preventDefault: () => {}};
@@ -57,7 +49,7 @@ function getStateText(compiled) {
 describe('ngb-rating', () => {
   beforeEach(() => {
     TestBed.configureTestingModule(
-        {declarations: [TestComponent], imports: [NgbRatingModule.forRoot(), FormsModule, ReactiveFormsModule]});
+        {declarations: [TestComponent], imports: [NgbRatingModule, FormsModule, ReactiveFormsModule]});
   });
 
   it('should initialize inputs with default values', () => {
@@ -449,7 +441,7 @@ describe('ngb-rating', () => {
       const fixture = createTestComponent('<ngb-rating></ngb-rating>');
       let ratingEl = fixture.debugElement.query(By.directive(NgbRating));
       fixture.detectChanges();
-      expect(ratingEl.attributes['aria-disabled']).toBeNull();
+      expect(ratingEl.attributes['aria-disabled'] == null).toBeTruthy();
 
       let ratingComp = <NgbRating>ratingEl.componentInstance;
       ratingComp.readonly = true;
@@ -672,7 +664,7 @@ describe('ngb-rating', () => {
   describe('Custom config', () => {
     let config: NgbRatingConfig;
 
-    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbRatingModule.forRoot()]}); });
+    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbRatingModule]}); });
 
     beforeEach(inject([NgbRatingConfig], (c: NgbRatingConfig) => {
       config = c;
@@ -697,7 +689,7 @@ describe('ngb-rating', () => {
 
     beforeEach(() => {
       TestBed.configureTestingModule(
-          {imports: [NgbRatingModule.forRoot()], providers: [{provide: NgbRatingConfig, useValue: config}]});
+          {imports: [NgbRatingModule], providers: [{provide: NgbRatingConfig, useValue: config}]});
     });
 
     it('should initialize inputs with provided config as provider', () => {

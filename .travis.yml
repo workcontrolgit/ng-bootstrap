@@ -1,6 +1,9 @@
 language: node_js
 node_js:
-  - "6"
+  - "10"
+
+services:
+  - xvfb
 
 env:
   global:
@@ -10,24 +13,22 @@ env:
     - LOGS_DIR=/tmp/logs
 
 addons:
-  firefox: "latest"
-
-before_install:
-  - export DISPLAY=:99.0
-  - sh -e /etc/init.d/xvfb start
-  - npm install --quiet -g gulp
-
+  chrome: stable
+  
 install:
-  - npm install
+  - yarn
+
+cache: yarn
 
 before_script:
   - mkdir -p $LOGS_DIR
   - ./scripts/sauce_connect_setup.sh
 
 script:
-  - gulp ci && npm run api-doc-test
+  - yarn ci && yarn scripts:test
+  - yarn global add codecov && codecov --disable=gcov -f coverage/lcov.info -F unit && codecov --disable=gcov -f coverage-e2e/lcov.info -F e2e
   - ./scripts/sauce_connect_block.sh
-  - gulp saucelabs
+  - yarn saucelabs
 
 after_script:
   - ./scripts/sauce_connect_teardown.sh

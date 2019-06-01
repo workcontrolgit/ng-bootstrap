@@ -6,31 +6,38 @@ import {NgbModalWindow} from './modal-window';
 import {ContentRef} from '../util/popup';
 
 /**
- * A reference to an active (currently opened) modal. Instances of this class
- * can be injected into components passed as modal content.
+ * A reference to the currently opened (active) modal.
+ *
+ * Instances of this class can be injected into your component passed as modal content.
+ * So you can `.close()` or `.dismiss()` the modal window from your component.
  */
 export class NgbActiveModal {
   /**
-   * Can be used to close a modal, passing an optional result.
+   * Closes the modal with an optional `result` value.
+   *
+   * The `NgbMobalRef.result` promise will be resolved with the provided value.
    */
   close(result?: any): void {}
 
   /**
-   * Can be used to dismiss a modal, passing an optional reason.
+   * Dismisses the modal with an optional `reason` value.
+   *
+   * The `NgbModalRef.result` promise will be rejected with the provided value.
    */
   dismiss(reason?: any): void {}
 }
 
 /**
- * A reference to a newly opened modal.
+ * A reference to the newly opened modal returned by the `NgbModal.open()` method.
  */
 export class NgbModalRef {
   private _resolve: (result?: any) => void;
   private _reject: (reason?: any) => void;
 
   /**
-   * The instance of component used as modal's content.
-   * Undefined when a TemplateRef is used as modal's content.
+   * The instance of a component used for the modal content.
+   *
+   * When a `TemplateRef` is used as the content, will return `undefined`.
    */
   get componentInstance(): any {
     if (this._contentRef.componentRef) {
@@ -38,11 +45,8 @@ export class NgbModalRef {
     }
   }
 
-  // only needed to keep TS1.8 compatibility
-  set componentInstance(instance: any) {}
-
   /**
-   * A promise that is resolved when a modal is closed and rejected when a modal is dismissed.
+   * The promise that is resolved when the modal is closed and rejected when the modal is dismissed.
    */
   result: Promise<any>;
 
@@ -59,7 +63,9 @@ export class NgbModalRef {
   }
 
   /**
-   * Can be used to close a modal, passing an optional result.
+   * Closes the modal with an optional `result` value.
+   *
+   * The `NgbMobalRef.result` promise will be resolved with the provided value.
    */
   close(result?: any): void {
     if (this._windowCmptRef) {
@@ -68,14 +74,33 @@ export class NgbModalRef {
     }
   }
 
+  private _dismiss(reason?: any) {
+    this._reject(reason);
+    this._removeModalElements();
+  }
+
   /**
-   * Can be used to dismiss a modal, passing an optional reason.
+   * Dismisses the modal with an optional `reason` value.
+   *
+   * The `NgbModalRef.result` promise will be rejected with the provided value.
    */
   dismiss(reason?: any): void {
     if (this._windowCmptRef) {
-      if (!this._beforeDismiss || this._beforeDismiss() !== false) {
-        this._reject(reason);
-        this._removeModalElements();
+      if (!this._beforeDismiss) {
+        this._dismiss(reason);
+      } else {
+        const dismiss = this._beforeDismiss();
+        if (dismiss && dismiss.then) {
+          dismiss.then(
+              result => {
+                if (result !== false) {
+                  this._dismiss(reason);
+                }
+              },
+              () => {});
+        } else if (dismiss !== false) {
+          this._dismiss(reason);
+        }
       }
     }
   }

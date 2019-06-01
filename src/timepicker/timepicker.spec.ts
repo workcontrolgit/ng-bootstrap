@@ -1,16 +1,21 @@
-import {TestBed, ComponentFixture, async, inject} from '@angular/core/testing';
+import {async, ComponentFixture, inject, TestBed} from '@angular/core/testing';
 import {createGenericTestComponent} from '../test/common';
 
-import {Component} from '@angular/core';
+import {ChangeDetectionStrategy, Component, DebugElement, Injectable} from '@angular/core';
 import {By} from '@angular/platform-browser';
-import {Validators, FormControl, FormGroup, FormsModule, ReactiveFormsModule} from '@angular/forms';
+import {FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators} from '@angular/forms';
 
 import {NgbTimepickerModule} from './timepicker.module';
 import {NgbTimepickerConfig} from './timepicker-config';
 import {NgbTimepicker} from './timepicker';
+import {NgbTimeAdapter, NgbTimeStructAdapter} from './ngb-time-adapter';
+import {NgbTimeStruct} from './ngb-time-struct';
 
 const createTestComponent = (html: string) =>
     createGenericTestComponent(html, TestComponent) as ComponentFixture<TestComponent>;
+
+const createOnPushTestComponent = (html: string) =>
+    createGenericTestComponent(html, TestComponentOnPush) as ComponentFixture<TestComponentOnPush>;
 
 function getTimepicker(el: HTMLElement) {
   return el.querySelector('ngb-timepicker');
@@ -76,14 +81,16 @@ function customizeConfig(config: NgbTimepickerConfig) {
 describe('ngb-timepicker', () => {
 
   beforeEach(() => {
-    TestBed.configureTestingModule(
-        {declarations: [TestComponent], imports: [NgbTimepickerModule.forRoot(), FormsModule, ReactiveFormsModule]});
+    TestBed.configureTestingModule({
+      declarations: [TestComponent, TestComponentOnPush],
+      imports: [NgbTimepickerModule, FormsModule, ReactiveFormsModule]
+    });
   });
 
   describe('initialization', () => {
     it('should initialize inputs with provided config', () => {
       const defaultConfig = new NgbTimepickerConfig();
-      const timepicker = new NgbTimepicker(new NgbTimepickerConfig());
+      const timepicker = new NgbTimepicker(new NgbTimepickerConfig(), new NgbTimeStructAdapter(), null);
       expectSameValues(timepicker, defaultConfig);
     });
   });
@@ -382,6 +389,100 @@ describe('ngb-timepicker', () => {
        }));
   });
 
+  describe('increment/decrement keyboard bindings', () => {
+
+    function getDebugInputs(fixture: ComponentFixture<TestComponent>): Array<DebugElement> {
+      return fixture.debugElement.queryAll(By.css('input'));
+    }
+
+    it('should increment / decrement hours', async(() => {
+         const html = `<ngb-timepicker [(ngModel)]="model"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         fixture.whenStable()
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => {
+               expectToDisplayTime(fixture.nativeElement, '10:30');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+               const hourInput = getDebugInputs(fixture)[0];
+
+               hourInput.triggerEventHandler('keydown.ArrowUp', {preventDefault: () => {}});  // H+
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '11:30');
+               expect(fixture.componentInstance.model).toEqual({hour: 11, minute: 30, second: 0});
+
+               hourInput.triggerEventHandler('keydown.ArrowDown', {preventDefault: () => {}});  // H-
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '10:30');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+             });
+       }));
+
+    it('should increment / decrement minutes', async(() => {
+         const html = `<ngb-timepicker [(ngModel)]="model"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         fixture.whenStable()
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => {
+               expectToDisplayTime(fixture.nativeElement, '10:30');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+               const minuteInput = getDebugInputs(fixture)[1];
+
+               minuteInput.triggerEventHandler('keydown.ArrowUp', {preventDefault: () => {}});  // M+
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '10:31');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 31, second: 0});
+
+               minuteInput.triggerEventHandler('keydown.ArrowDown', {preventDefault: () => {}});  // M-
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '10:30');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+             });
+       }));
+
+    it('should increment / decrement seconds', async(() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [seconds]="true"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         fixture.whenStable()
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => {
+               expectToDisplayTime(fixture.nativeElement, '10:30:00');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+               const secondInput = getDebugInputs(fixture)[2];
+
+               secondInput.triggerEventHandler('keydown.ArrowUp', {preventDefault: () => {}});  // S+
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '10:30:01');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 1});
+
+               secondInput.triggerEventHandler('keydown.ArrowDown', {preventDefault: () => {}});  // S-
+               fixture.detectChanges();
+               expectToDisplayTime(fixture.nativeElement, '10:30:00');
+               expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+             });
+       }));
+  });
+
   describe('model updates in response to input field changes', () => {
 
     it('should update hours', async(() => {
@@ -506,7 +607,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '01:30:00');
-               expect(meridianButton.innerHTML).toBe('PM');
+               expect(meridianButton.textContent).toBe('PM');
 
                fixture.componentInstance.model = {hour: 1, minute: 30, second: 0};
                fixture.detectChanges();
@@ -518,7 +619,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '01:30:00');
-               expect(meridianButton.innerHTML).toBe('AM');
+               expect(meridianButton.textContent).toBe('AM');
              });
        }));
 
@@ -536,7 +637,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '12:30:00');
-               expect(meridianButton.innerHTML).toBe('PM');
+               expect(meridianButton.textContent).toBe('PM');
 
                fixture.componentInstance.model = {hour: 0, minute: 30, second: 0};
                fixture.detectChanges();
@@ -548,7 +649,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '12:30:00');
-               expect(meridianButton.innerHTML).toBe('AM');
+               expect(meridianButton.textContent).toBe('AM');
              });
        }));
 
@@ -566,7 +667,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '01:30:00');
-               expect(meridianButton.innerHTML).toBe('PM');
+               expect(meridianButton.textContent).toBe('PM');
 
                meridianButton.click();
                fixture.detectChanges();
@@ -575,7 +676,7 @@ describe('ngb-timepicker', () => {
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '01:30:00');
                expect(fixture.componentInstance.model).toEqual({hour: 1, minute: 30, second: 0});
-               expect(meridianButton.innerHTML).toBe('AM');
+               expect(meridianButton.textContent).toBe('AM');
              });
        }));
 
@@ -670,7 +771,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '10:30');
-               expect(meridianButton.innerHTML).toBe('PM');
+               expect(meridianButton.textContent).toBe('PM');
                expect(fixture.componentInstance.model).toEqual({hour: 22, minute: 30, second: 0});
              });
        }));
@@ -693,7 +794,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '10:30');
-               expect(meridianButton.innerHTML).toBe('PM');
+               expect(meridianButton.textContent).toBe('PM');
                expect(fixture.componentInstance.model).toEqual({hour: 22, minute: 30, second: 0});
              });
        }));
@@ -716,7 +817,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '09:30');
-               expect(meridianButton.innerHTML).toBe('AM');
+               expect(meridianButton.textContent).toBe('AM');
                expect(fixture.componentInstance.model).toEqual({hour: 9, minute: 30, second: 0});
              });
        }));
@@ -739,7 +840,7 @@ describe('ngb-timepicker', () => {
              })
              .then(() => {
                expectToDisplayTime(fixture.nativeElement, '09:30');
-               expect(meridianButton.innerHTML).toBe('AM');
+               expect(meridianButton.textContent).toBe('AM');
                expect(fixture.componentInstance.model).toEqual({hour: 9, minute: 30, second: 0});
              });
        }));
@@ -944,20 +1045,29 @@ describe('ngb-timepicker', () => {
              });
        }));
 
-    it('should have disabled class, when it is disabled', () => {
-      const html = `<ngb-timepicker [(ngModel)]="model" [seconds]="true" [disabled]="disabled"></ngb-timepicker>`;
+    it('should have disabled class, when it is disabled', async(() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [seconds]="true" [disabled]="disabled"></ngb-timepicker>`;
 
-      const fixture = createTestComponent(html);
-      fixture.detectChanges();
+         const fixture = createTestComponent(html);
+         fixture.detectChanges();
+         fixture.whenStable()
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => {
+               let fieldset = getFieldsetElement(fixture.nativeElement);
+               expect(fieldset.hasAttribute('disabled')).toBeTruthy();
 
-      let fieldset = getFieldsetElement(fixture.nativeElement);
-      expect(fieldset.hasAttribute('disabled')).toBeTruthy;
-
-      fixture.componentInstance.disabled = false;
-      fixture.detectChanges();
-      fieldset = getFieldsetElement(fixture.nativeElement);
-      expect(fieldset.hasAttribute('disabled')).toBeFalsy;
-    });
+               fixture.componentInstance.disabled = false;
+               fixture.detectChanges();
+               fixture.whenStable().then(() => {
+                 fixture.detectChanges();
+                 fieldset = getFieldsetElement(fixture.nativeElement);
+                 expect(fieldset.hasAttribute('disabled')).toBeFalsy();
+               });
+             });
+       }));
 
     it('should have disabled attribute when it is disabled using reactive forms', async(() => {
          const html = `<form [formGroup]="disabledForm"><ngb-timepicker formControlName="control"></ngb-timepicker></form>`;
@@ -1055,7 +1165,7 @@ describe('ngb-timepicker', () => {
 
   describe('size', () => {
 
-    it('should add appropriate CSS classes to butons and inputs when size is small', () => {
+    it('should add appropriate CSS classes to buttons and inputs when size is small', () => {
       const html = `<ngb-timepicker size="small"></ngb-timepicker>`;
 
       const fixture = createTestComponent(html);
@@ -1069,7 +1179,7 @@ describe('ngb-timepicker', () => {
       }
     });
 
-    it('should add appropriate CSS classes to butons and inputs when size is large', () => {
+    it('should add appropriate CSS classes to buttons and inputs when size is large', () => {
       const html = `<ngb-timepicker size="large"></ngb-timepicker>`;
 
       const fixture = createTestComponent(html);
@@ -1083,7 +1193,7 @@ describe('ngb-timepicker', () => {
       }
     });
 
-    it('should not add special CSS classes to butons and inputs when size is medium', () => {
+    it('should not add special CSS classes to buttons and inputs when size is medium', () => {
       const html = `<ngb-timepicker size="medium"></ngb-timepicker>`;
 
       const fixture = createTestComponent(html);
@@ -1097,7 +1207,7 @@ describe('ngb-timepicker', () => {
       }
     });
 
-    it('should not add special CSS classes to butons and inputs when no size is specified', () => {
+    it('should not add special CSS classes to buttons and inputs when no size is specified', () => {
       const html = `<ngb-timepicker></ngb-timepicker>`;
 
       const fixture = createTestComponent(html);
@@ -1116,7 +1226,7 @@ describe('ngb-timepicker', () => {
     let config: NgbTimepickerConfig;
 
     beforeEach(() => {
-      TestBed.configureTestingModule({imports: [NgbTimepickerModule.forRoot()]});
+      TestBed.configureTestingModule({imports: [NgbTimepickerModule]});
       TestBed.overrideComponent(NgbTimepicker, {set: {template: ''}});
     });
 
@@ -1139,7 +1249,7 @@ describe('ngb-timepicker', () => {
 
     beforeEach(() => {
       TestBed.configureTestingModule(
-          {imports: [NgbTimepickerModule.forRoot()], providers: [{provide: NgbTimepickerConfig, useValue: config}]});
+          {imports: [NgbTimepickerModule], providers: [{provide: NgbTimepickerConfig, useValue: config}]});
     });
 
     it('should initialize inputs with provided config as provider', () => {
@@ -1196,7 +1306,174 @@ describe('ngb-timepicker', () => {
        }));
   });
 
+  describe('Custom steps', () => {
+    const config = new NgbTimepickerConfig();
+    config.seconds = true;
+    config.hourStep = 2;
+    config.minuteStep = 3;
+    config.secondStep = 4;
 
+    beforeEach(() => {
+      TestBed.configureTestingModule(
+          {imports: [NgbTimepickerModule], providers: [{provide: NgbTimepickerConfig, useValue: config}]});
+    });
+
+    it('should increment / decrement hours by 6', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [hourStep]="6"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         fixture.detectChanges();
+         await fixture.whenStable();
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[0]).click();  // H+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '16:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 16, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[1]).click();  // H-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+
+    it('should increment / decrement hours to default value if step set to undefined', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [hourStep]="undefined"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[0]).click();  // H+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '12:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 12, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[1]).click();  // H-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+
+    it('should increment / decrement minutes by 7', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [minuteStep]="7"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         fixture.detectChanges();
+         await fixture.whenStable();
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[2]).click();  // M+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:37:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 37, second: 0});
+
+         (<HTMLButtonElement>buttons[3]).click();  // M-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+
+    it('should increment / decrement minutes to default value if step set to undefined', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [minuteStep]="undefined"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[2]).click();  // M+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:33:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 33, second: 0});
+
+         (<HTMLButtonElement>buttons[3]).click();  // M-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+
+    it('should increment / decrement seconds by 8', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [secondStep]="8"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+
+         fixture.detectChanges();
+         await fixture.whenStable();
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[4]).click();  // S+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:08');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 8});
+
+         (<HTMLButtonElement>buttons[5]).click();  // S-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+
+    it('should increment / decrement seconds to default value if step set to undefined', async(async() => {
+         const html = `<ngb-timepicker [(ngModel)]="model" [secondStep]="undefined"></ngb-timepicker>`;
+
+         const fixture = createTestComponent(html);
+         fixture.componentInstance.model = {hour: 10, minute: 30, second: 0};
+         fixture.detectChanges();
+         await fixture.whenStable();
+         fixture.detectChanges();
+         await fixture.whenStable();
+         const buttons = getButtons(fixture.nativeElement);
+
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+
+         (<HTMLButtonElement>buttons[4]).click();  // S+
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:04');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 4});
+
+         (<HTMLButtonElement>buttons[5]).click();  // S-
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '10:30:00');
+         expect(fixture.componentInstance.model).toEqual({hour: 10, minute: 30, second: 0});
+       }));
+  });
 
   describe('Seconds handling', () => {
     it('should propagate seconds to 0 in model if seconds not shown and no second in initial model', async(() => {
@@ -1286,6 +1563,86 @@ describe('ngb-timepicker', () => {
              });
        }));
   });
+
+  describe('Custom adapter', () => {
+
+    beforeEach(() => {
+      TestBed.configureTestingModule({
+        declarations: [TestComponent],
+        imports: [NgbTimepickerModule, FormsModule],
+        providers: [{provide: NgbTimeAdapter, useClass: StringTimeAdapter}]
+      });
+    });
+
+    it('should display the right time when model is a string parsed by a custom time adapter', async(() => {
+         const html = `<ngb-timepicker [(ngModel)]="model"></ngb-timepicker>`;
+         const fixture = createTestComponent(html);
+
+         fixture.componentInstance.model = null;
+         fixture.detectChanges();
+
+         fixture.detectChanges();
+         fixture.whenStable()
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => { expectToDisplayTime(fixture.nativeElement, ':'); })
+             .then(() => {
+               fixture.componentInstance.model = '09:25:00';
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => {
+               fixture.detectChanges();
+               return fixture.whenStable();
+             })
+             .then(() => { expectToDisplayTime(fixture.nativeElement, '09:25'); });
+       }));
+
+    it('should write the entered value as a string formatted by a custom time adapter', () => {
+      const html = `<ngb-timepicker [(ngModel)]="model"></ngb-timepicker>`;
+
+      const fixture = createTestComponent(html);
+      fixture.componentInstance.model = null;
+      fixture.detectChanges();
+      fixture.whenStable()
+          .then(() => {
+            fixture.detectChanges();
+            return fixture.whenStable();
+          })
+          .then(() => {
+
+            const inputs = fixture.debugElement.queryAll(By.css('input'));
+            inputs[0].triggerEventHandler('change', createChangeEvent('11'));
+            fixture.detectChanges();
+            expectToDisplayTime(fixture.nativeElement, '11:');
+            expect(fixture.componentInstance.model).toBeNull();
+
+            inputs[1].triggerEventHandler('change', createChangeEvent('5'));
+            fixture.detectChanges();
+            expectToDisplayTime(fixture.nativeElement, '11:05');
+            expect(fixture.componentInstance.model).toEqual('11:05:00');
+
+            inputs[0].triggerEventHandler('change', createChangeEvent('aa'));
+            fixture.detectChanges();
+            expectToDisplayTime(fixture.nativeElement, ':05');
+            expect(fixture.componentInstance.model).toBeNull();
+          });
+    });
+  });
+
+  describe('on push', () => {
+
+    it('should render initial model value', async(async() => {
+         const fixture =
+             createOnPushTestComponent(`<ngb-timepicker [ngModel]="{hour: 13, minute: 30}"></ngb-timepicker>`);
+         fixture.detectChanges();
+         await fixture.whenStable();
+         fixture.detectChanges();
+         expectToDisplayTime(fixture.nativeElement, '13:30');
+       }));
+  });
 });
 
 
@@ -1301,4 +1658,28 @@ class TestComponent {
   showSeconds = true;
 
   onSubmit() { this.submitted = true; }
+}
+
+@Component({selector: 'test-cmp-on-push', template: '', changeDetection: ChangeDetectionStrategy.OnPush})
+class TestComponentOnPush {
+}
+
+@Injectable()
+class StringTimeAdapter extends NgbTimeAdapter<string> {
+  fromModel(value: string): NgbTimeStruct {
+    if (!value) {
+      return null;
+    }
+    const split = value.split(':');
+    return {hour: parseInt(split[0], 10), minute: parseInt(split[1], 10), second: parseInt(split[2], 10)};
+  }
+
+  toModel(time: NgbTimeStruct): string {
+    if (!time) {
+      return null;
+    }
+    return `${this.pad(time.hour)}:${this.pad(time.minute)}:${this.pad(time.second)}`;
+  }
+
+  private pad(i: number): string { return i < 10 ? `0${i}` : `${i}`; }
 }

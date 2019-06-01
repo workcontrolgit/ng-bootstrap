@@ -1,9 +1,10 @@
-import {Router, NavigationEnd} from '@angular/router';
-import {Component, OnInit} from '@angular/core';
-import {Analytics} from './shared/analytics/analytics';
-import {componentsList} from './shared';
+import { DOCUMENT } from '@angular/common';
+import { Component, Inject, OnInit } from '@angular/core';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter } from 'rxjs/operators';
 
-import '../style/app.scss';
+import { componentsList } from './shared';
+import { Analytics } from './shared/analytics/analytics';
 
 @Component({
   selector: 'ngbd-app',
@@ -14,18 +15,26 @@ export class AppComponent implements OnInit {
 
   components = componentsList;
 
-  constructor(private _analytics: Analytics, router: Router) {
-    router.events.subscribe(event => {
-      if (event instanceof NavigationEnd) {
+  constructor(
+    private _analytics: Analytics,
+    router: Router,
+    @Inject(DOCUMENT) document: any
+  ) {
+    router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe(event => {
         const { fragment } = router.parseUrl(router.url);
         if (fragment) {
-          const element = document.querySelector(`#${fragment}`);
-          if (element) {
-            element.scrollIntoView();
-          }
+          setTimeout(() => {
+            const element = document.querySelector(`#${fragment}`);
+            if (element) {
+              element.scrollIntoView();
+            }
+          }, 0);
+        } else {
+          window.scrollTo({ top: 0 });
         }
-      }
-    });
+      });
   }
 
   ngOnInit(): void {

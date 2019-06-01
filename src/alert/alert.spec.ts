@@ -18,17 +18,28 @@ function getCloseButton(element: HTMLElement): HTMLButtonElement {
   return <HTMLButtonElement>element.querySelector('button');
 }
 
+function getCloseButtonIcon(element: HTMLElement): HTMLSpanElement {
+  return <HTMLSpanElement>element.querySelector('button > span');
+}
+
 describe('ngb-alert', () => {
 
-  beforeEach(
-      () => { TestBed.configureTestingModule({declarations: [TestComponent], imports: [NgbAlertModule.forRoot()]}); });
+  beforeEach(() => { TestBed.configureTestingModule({declarations: [TestComponent], imports: [NgbAlertModule]}); });
 
   it('should initialize inputs with default values', () => {
     const defaultConfig = new NgbAlertConfig();
-    const alertCmp = new NgbAlert(new NgbAlertConfig());
-
+    const alertCmp = TestBed.createComponent(NgbAlert).componentInstance;
     expect(alertCmp.dismissible).toBe(defaultConfig.dismissible);
     expect(alertCmp.type).toBe(defaultConfig.type);
+  });
+
+  it('should apply those default values to the template', () => {
+    const fixture = createTestComponent('<ngb-alert>Cool!</ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+
+    expect(alertEl.getAttribute('role')).toEqual('alert');
+    expect(alertEl).toHaveCssClass('alert-warning');
+    expect(alertEl).toHaveCssClass('alert-dismissible');
   });
 
   it('should allow specifying alert type', () => {
@@ -39,26 +50,80 @@ describe('ngb-alert', () => {
     expect(alertEl).toHaveCssClass('alert-success');
   });
 
-  it('should render close button and have "alert-dismissible" CSS class when dismissible', () => {
-    const fixture = createTestComponent('<ngb-alert [dismissible]="true">Watch out!</ngb-alert>');
+  it('should allow changing alert type', () => {
+    const fixture = createTestComponent('<ngb-alert [type]="type">Cool!</ngb-alert>');
     const alertEl = getAlertElement(fixture.nativeElement);
 
-    expect(alertEl).toHaveCssClass('alert-dismissible');
-    expect(getCloseButton(alertEl)).toBeTruthy();
+    expect(alertEl).toHaveCssClass('alert-success');
+    expect(alertEl).not.toHaveCssClass('alert-warning');
+
+    fixture.componentInstance.type = 'warning';
+    fixture.detectChanges();
+    expect(alertEl).not.toHaveCssClass('alert-success');
+    expect(alertEl).toHaveCssClass('alert-warning');
   });
 
-  it('should render close button and not have "alert-dismissible" CSS class only if dismissible', () => {
+  it('should allow adding custom CSS classes', () => {
+    const fixture = createTestComponent('<ngb-alert type="success" class="myClass">Cool!</ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+
+    expect(alertEl).toHaveCssClass('alert');
+    expect(alertEl).toHaveCssClass('alert-success');
+    expect(alertEl).toHaveCssClass('myClass');
+  });
+
+  it('should render close button when dismissible', () => {
+    const fixture = createTestComponent('<ngb-alert [dismissible]="true">Watch out!</ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+    const buttonEl = getCloseButton(alertEl);
+    const buttonIconEl = getCloseButtonIcon(alertEl);
+
+    expect(alertEl).toHaveCssClass('alert-dismissible');
+    expect(buttonEl).toBeTruthy();
+    expect(buttonEl.getAttribute('class')).toContain('close');
+    expect(buttonEl.getAttribute('aria-label')).toBe('Close');
+    expect(buttonIconEl.getAttribute('aria-hidden')).toBe('true');
+    expect(buttonIconEl.textContent).toBe('×');
+  });
+
+  it('should not render the close button if it is not dismissible', () => {
     const fixture = createTestComponent(`<ngb-alert [dismissible]="false">Don't close!</ngb-alert>`);
     const alertEl = getAlertElement(fixture.nativeElement);
 
     expect(alertEl).not.toHaveCssClass('alert-dismissible');
-    expect(getCloseButton(getAlertElement(fixture.nativeElement))).toBeFalsy();
+    expect(getCloseButton(alertEl)).toBeFalsy();
+  });
+
+  it('should fire an event after closing a dismissible alert', () => {
+    const fixture =
+        createTestComponent('<ngb-alert [dismissible]="true" (close)="closed = true">Watch out!</ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+    const buttonEl = getCloseButton(alertEl);
+
+    expect(fixture.componentInstance.closed).toBe(false);
+    buttonEl.click();
+    expect(fixture.componentInstance.closed).toBe(true);
+  });
+
+  it('should project the content given into the component', () => {
+    const fixture = createTestComponent('<ngb-alert>Cool!</ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+
+    expect(alertEl.textContent).toContain('Cool!');
+  });
+
+  it('should project content before the closing button for a11y/screen readers', () => {
+    const fixture = createTestComponent('<ngb-alert [dismissible]="true"><span>Cool!</span></ngb-alert>');
+    const alertEl = getAlertElement(fixture.nativeElement);
+
+    const childElements = Array.from(alertEl.children).map(node => node.tagName.toLowerCase());
+    expect(childElements).toEqual(['span', 'button']);
   });
 
   describe('Custom config', () => {
     let config: NgbAlertConfig;
 
-    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbAlertModule.forRoot()]}); });
+    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbAlertModule]}); });
 
     beforeEach(inject([NgbAlertConfig], (c: NgbAlertConfig) => {
       config = c;
@@ -83,7 +148,7 @@ describe('ngb-alert', () => {
 
     beforeEach(() => {
       TestBed.configureTestingModule(
-          {imports: [NgbAlertModule.forRoot()], providers: [{provide: NgbAlertConfig, useValue: config}]});
+          {imports: [NgbAlertModule], providers: [{provide: NgbAlertConfig, useValue: config}]});
     });
 
     it('should initialize inputs with provided config as provider', () => {
@@ -101,4 +166,5 @@ describe('ngb-alert', () => {
 class TestComponent {
   name = 'World';
   closed = false;
+  type = 'success';
 }

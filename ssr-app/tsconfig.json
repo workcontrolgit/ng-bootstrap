@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "./",
+    "outDir": "temp",
+    "types": [],
+    "paths": {
+      "@ng-bootstrap/ng-bootstrap": ["../dist/ng-bootstrap"]
+    }
+  },
+  "exclude": [
+    "**/*.e2e-spec.ts"
+  ]
+}

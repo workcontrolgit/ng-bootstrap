@@ -1,10 +1,9 @@
-import {TestBed, ComponentFixture, async} from '@angular/core/testing';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {async, ComponentFixture, fakeAsync, TestBed, tick} from '@angular/core/testing';
+import {FormControl, FormGroup, FormsModule, NgModel, ReactiveFormsModule, Validators} from '@angular/forms';
 import {By} from '@angular/platform-browser';
+
 import {createGenericTestComponent} from '../test/common';
-
-import {Component} from '@angular/core';
-import {Validators, FormControl, FormGroup, FormsModule, ReactiveFormsModule, NgModel} from '@angular/forms';
-
 import {NgbButtonsModule} from './buttons.module';
 
 const createTestComponent = (html: string) =>
@@ -55,9 +54,12 @@ describe('ngbRadioGroup', () => {
     </div>`;
 
   beforeEach(() => {
-    TestBed.configureTestingModule(
-        {declarations: [TestComponent], imports: [NgbButtonsModule, FormsModule, ReactiveFormsModule]});
+    TestBed.configureTestingModule({
+      declarations: [TestComponent, TestComponentOnPush],
+      imports: [NgbButtonsModule, FormsModule, ReactiveFormsModule]
+    });
     TestBed.overrideComponent(TestComponent, {set: {template: defaultHtml}});
+    TestBed.overrideComponent(TestComponentOnPush, {set: {template: defaultHtml}});
   });
 
   it('toggles radio inputs based on model changes', async(() => {
@@ -324,6 +326,28 @@ describe('ngbRadioGroup', () => {
     expect(getInput(fixture.nativeElement, 0).hasAttribute('disabled')).toBeFalsy();
   });
 
+  it('should disable label and input when added dynamically in reactive forms', () => {
+    const forHtml = `
+      <form [formGroup]="disabledForm">
+        <div ngbRadioGroup formControlName="control">
+          <label ngbButtonLabel *ngIf="shown">
+            <input ngbButton type="radio" name="radio" [value]="'one'"/> One
+          </label>
+        </div>
+      </form>
+    `;
+
+    const fixture = createTestComponent(forHtml);
+    fixture.componentInstance.shown = false;
+    fixture.componentInstance.disabledForm.disable();
+    fixture.detectChanges();
+
+    fixture.componentInstance.shown = true;
+    fixture.detectChanges();
+    expect(getLabel(fixture.nativeElement, 0)).toHaveCssClass('disabled');
+    expect(getInput(fixture.nativeElement, 0).hasAttribute('disabled')).toBeTruthy();
+  });
+
   it('should disable label and input when it is disabled using template-driven forms', async(() => {
        const html = `
       <form>
@@ -553,8 +577,22 @@ describe('ngbRadioGroup', () => {
       const fixture = TestBed.createComponent(TestComponent);
       fixture.detectChanges();
 
-      expect(getGroupElement(fixture.nativeElement).getAttribute('role')).toBe('group');
+      expect(getGroupElement(fixture.nativeElement).getAttribute('role')).toBe('radiogroup');
     });
+  });
+
+  describe('on push', () => {
+    it('should set initial model value', fakeAsync(() => {
+         const fixture = TestBed.createComponent(TestComponentOnPush);
+         const {values} = fixture.componentInstance;
+
+         fixture.detectChanges();
+         tick();
+         fixture.detectChanges();
+         expect(getInput(fixture.nativeElement, 0).value).toEqual(values[0]);
+         expect(getInput(fixture.nativeElement, 1).value).toEqual(values[1]);
+         expectRadios(fixture.nativeElement, [1, 0]);
+       }));
   });
 });
 
@@ -570,4 +608,10 @@ class TestComponent {
   disabled = true;
   groupDisabled = true;
   checked: any;
+}
+
+@Component({selector: 'test-cmp-on-push', template: '', changeDetection: ChangeDetectionStrategy.OnPush})
+class TestComponentOnPush {
+  model = 'one';
+  values = ['one', 'two', 'three'];
 }

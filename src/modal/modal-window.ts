@@ -1,29 +1,32 @@
+import {DOCUMENT} from '@angular/common';
 import {
-  Component,
-  Output,
-  EventEmitter,
-  Input,
-  ElementRef,
-  Renderer2,
-  OnInit,
   AfterViewInit,
-  OnDestroy
+  Component,
+  ElementRef,
+  EventEmitter,
+  Inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output
 } from '@angular/core';
 
+import {getFocusableBoundaryElements} from '../util/focus-trap';
 import {ModalDismissReasons} from './modal-dismiss-reasons';
 
 @Component({
   selector: 'ngb-modal-window',
   host: {
-    '[class]': '"modal fade show" + (windowClass ? " " + windowClass : "")',
+    '[class]': '"modal fade show d-block" + (windowClass ? " " + windowClass : "")',
     'role': 'dialog',
     'tabindex': '-1',
-    'style': 'display: block;',
     '(keyup.esc)': 'escKey($event)',
-    '(click)': 'backdropClick($event)'
+    '(click)': 'backdropClick($event)',
+    '[attr.aria-modal]': 'true',
+    '[attr.aria-labelledby]': 'ariaLabelledBy',
   },
   template: `
-    <div [class]="'modal-dialog' + (size ? ' modal-' + size : '')" role="document">
+    <div [class]="'modal-dialog' + (size ? ' modal-' + size : '') + (centered ? ' modal-dialog-centered' : '')" role="document">
         <div class="modal-content"><ng-content></ng-content></div>
     </div>
     `
@@ -32,14 +35,16 @@ export class NgbModalWindow implements OnInit,
     AfterViewInit, OnDestroy {
   private _elWithFocus: Element;  // element that is focused prior to modal opening
 
+  @Input() ariaLabelledBy: string;
   @Input() backdrop: boolean | string = true;
+  @Input() centered: string;
   @Input() keyboard = true;
   @Input() size: string;
   @Input() windowClass: string;
 
   @Output('dismiss') dismissEvent = new EventEmitter();
 
-  constructor(private _elRef: ElementRef, private _renderer: Renderer2) {}
+  constructor(@Inject(DOCUMENT) private _document: any, private _elRef: ElementRef<HTMLElement>) {}
 
   backdropClick($event): void {
     if (this.backdrop === true && this._elRef.nativeElement === $event.target) {
@@ -55,19 +60,20 @@ export class NgbModalWindow implements OnInit,
 
   dismiss(reason): void { this.dismissEvent.emit(reason); }
 
-  ngOnInit() {
-    this._elWithFocus = document.activeElement;
-    this._renderer.addClass(document.body, 'modal-open');
-  }
+  ngOnInit() { this._elWithFocus = this._document.activeElement; }
 
   ngAfterViewInit() {
     if (!this._elRef.nativeElement.contains(document.activeElement)) {
-      this._elRef.nativeElement['focus'].apply(this._elRef.nativeElement, []);
+      const autoFocusable = this._elRef.nativeElement.querySelector(`[ngbAutofocus]`) as HTMLElement;
+      const firstFocusable = getFocusableBoundaryElements(this._elRef.nativeElement)[0];
+
+      const elementToFocus = autoFocusable || firstFocusable || this._elRef.nativeElement;
+      elementToFocus.focus();
     }
   }
 
   ngOnDestroy() {
-    const body = document.body;
+    const body = this._document.body;
     const elWithFocus = this._elWithFocus;
 
     let elementToFocus;
@@ -76,9 +82,7 @@ export class NgbModalWindow implements OnInit,
     } else {
       elementToFocus = body;
     }
-    elementToFocus['focus'].apply(elementToFocus, []);
-
+    elementToFocus.focus();
     this._elWithFocus = null;
-    this._renderer.removeClass(body, 'modal-open');
   }
 }

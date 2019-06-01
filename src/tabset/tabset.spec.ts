@@ -56,8 +56,7 @@ function getButton(nativeEl: HTMLElement) {
 }
 
 describe('ngb-tabset', () => {
-  beforeEach(
-      () => { TestBed.configureTestingModule({declarations: [TestComponent], imports: [NgbTabsetModule.forRoot()]}); });
+  beforeEach(() => { TestBed.configureTestingModule({declarations: [TestComponent], imports: [NgbTabsetModule]}); });
 
   it('should initialize inputs with default values', () => {
     const defaultConfig = new NgbTabsetConfig();
@@ -169,11 +168,44 @@ describe('ngb-tabset', () => {
     expect(tabTitles[2].textContent).toMatch(/bazbaz/);
   });
 
+  it('should not pick up titles from nested tabsets', () => {
+    const testHtml = `
+    <ngb-tabset>
+      <ngb-tab title="parent">
+        <ng-template ngbTabContent>
+          <ngb-tabset>
+            <ngb-tab>
+              <ng-template ngbTabTitle>child</ng-template>
+              <ng-template ngbTabContent></ng-template>
+            </ngb-tab>
+          </ngb-tabset>
+        </ng-template>
+      </ngb-tab>
+    </ngb-tabset>
+    `;
+    const fixture = createTestComponent(testHtml);
+    // additional change detection is required to reproduce the problem in the test environment
+    fixture.detectChanges();
+
+    const titles = getTabTitles(fixture.nativeElement);
+    const parentTitle = titles[0].textContent.trim();
+    const childTitle = titles[1].textContent.trim();
+
+    expect(parentTitle).toContain('parent');
+    expect(parentTitle).not.toContain('child');
+    expect(childTitle).toContain('child');
+    expect(childTitle).not.toContain('parent');
+  });
+
 
   it('should not crash for empty tabsets', () => {
     const fixture = createTestComponent(`<ngb-tabset activeId="2"></ngb-tabset>`);
-
     expectTabs(fixture.nativeElement, []);
+  });
+
+  it('should not crash for tabsets with empty tab content', () => {
+    const fixture = createTestComponent(`<ngb-tabset><ngb-tab></ngb-tab></ngb-tabset>`);
+    expectTabs(fixture.nativeElement, [true]);
   });
 
 
@@ -292,6 +324,18 @@ describe('ngb-tabset', () => {
        `);
 
     expect(fixture.nativeElement.querySelector('ul')).toHaveCssClass('nav-pills');
+    expect(fixture.nativeElement.querySelector('ul')).not.toHaveCssClass('nav-tabs');
+  });
+
+  it('should allow arbitrary nav type', () => {
+    const fixture = createTestComponent(`
+         <ngb-tabset type="bordered">
+           <ngb-tab title="bar"><ng-template ngbTabContent>Bar</ng-template></ngb-tab>
+         </ngb-tabset>
+       `);
+
+    expect(fixture.nativeElement.querySelector('ul')).toHaveCssClass('nav-bordered');
+    expect(fixture.nativeElement.querySelector('ul')).not.toHaveCssClass('nav-pills');
     expect(fixture.nativeElement.querySelector('ul')).not.toHaveCssClass('nav-tabs');
   });
 
@@ -508,7 +552,7 @@ describe('ngb-tabset', () => {
   describe('Custom config', () => {
     let config: NgbTabsetConfig;
 
-    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbTabsetModule.forRoot()]}); });
+    beforeEach(() => { TestBed.configureTestingModule({imports: [NgbTabsetModule]}); });
 
     beforeEach(inject([NgbTabsetConfig], (c: NgbTabsetConfig) => {
       config = c;
@@ -530,7 +574,7 @@ describe('ngb-tabset', () => {
 
     beforeEach(() => {
       TestBed.configureTestingModule(
-          {imports: [NgbTabsetModule.forRoot()], providers: [{provide: NgbTabsetConfig, useValue: config}]});
+          {imports: [NgbTabsetModule], providers: [{provide: NgbTabsetConfig, useValue: config}]});
     });
 
     it('should initialize inputs with provided config as provider', () => {

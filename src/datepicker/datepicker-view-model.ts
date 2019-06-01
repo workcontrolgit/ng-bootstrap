@@ -3,16 +3,21 @@ import {NgbDateStruct} from './ngb-date-struct';
 import {DayTemplateContext} from './datepicker-day-template-context';
 
 export type NgbMarkDisabled = (date: NgbDateStruct, current: {year: number, month: number}) => boolean;
+export type NgbDayTemplateData = (date: NgbDateStruct, current: {year: number, month: number}) => any;
 
 export type DayViewModel = {
   date: NgbDate,
-  context: DayTemplateContext
-}
+  context: DayTemplateContext,
+  tabindex: number,
+  ariaLabel: string,
+  hidden: boolean
+};
 
 export type WeekViewModel = {
   number: number,
-  days: DayViewModel[]
-}
+  days: DayViewModel[],
+  collapsed: boolean
+};
 
 export type MonthViewModel = {
   firstDate: NgbDate,
@@ -25,6 +30,7 @@ export type MonthViewModel = {
 
 // clang-format off
 export type DatepickerViewModel = {
+  dayTemplateData?: NgbDayTemplateData,
   disabled: boolean,
   displayMonths: number,
   firstDate?: NgbDate,
@@ -37,8 +43,15 @@ export type DatepickerViewModel = {
   minDate?: NgbDate,
   months: MonthViewModel[],
   navigation: 'select' | 'arrows' | 'none',
+  outsideDays: 'visible' | 'collapsed' | 'hidden',
+  prevDisabled: boolean,
+  nextDisabled: boolean,
+  selectBoxes: {
+    years: number[],
+    months: number[]
+  },
   selectedDate: NgbDate
-}
+};
 // clang-format on
 
 export enum NavigationEvent {

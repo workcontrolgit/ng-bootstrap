@@ -1,4 +1,8 @@
+import {DebugElement} from '@angular/core';
 import {TestBed, ComponentFixture} from '@angular/core/testing';
+import {Key} from '../util/key';
+
+
 
 export function createGenericTestComponent<T>(html: string, type: {new (...args: any[]): T}): ComponentFixture<T> {
   TestBed.overrideComponent(type, {set: {template: html}});
@@ -58,4 +62,21 @@ export function isBrowser(browsers: Browser | Browser[], ua = window.navigator.u
   } else {
     return browsersStr.indexOf(browser) > -1;
   }
+}
+
+export function createKeyEvent(key: Key, options: {type: 'keyup' | 'keydown'} = {
+  type: 'keyup'
+}) {
+  const event = document.createEvent('KeyboardEvent') as any;
+  let initEvent = (event.initKeyEvent || event.initKeyboardEvent).bind(event);
+  initEvent(options.type, true, true, window, 0, 0, 0, 0, 0, key);
+  Object.defineProperties(event, {which: {get: () => key}});
+
+  return event;
+}
+
+export function triggerEvent(element: DebugElement | HTMLElement, eventName: string) {
+  const evt = document.createEvent('Event');
+  evt.initEvent(eventName, true, false);
+  (element instanceof DebugElement ? element.nativeElement : element).dispatchEvent(evt);
 }

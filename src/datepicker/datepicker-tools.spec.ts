@@ -3,13 +3,17 @@ import {
   buildMonths,
   checkDateInRange,
   dateComparator,
+  generateSelectBoxMonths,
   getFirstViewDate,
-  isDateSelectable
+  isChangedMonth,
+  isDateSelectable,
+  generateSelectBoxYears
 } from './datepicker-tools';
 import {NgbDate} from './ngb-date';
 import {NgbCalendar, NgbCalendarGregorian} from './ngb-calendar';
 import {TestBed} from '@angular/core/testing';
-import {NgbMarkDisabled} from './datepicker-view-model';
+import {DatepickerViewModel, NgbMarkDisabled, MonthViewModel} from './datepicker-view-model';
+import {NgbDatepickerI18n, NgbDatepickerI18nDefault} from './datepicker-i18n';
 
 describe(`datepicker-tools`, () => {
 
@@ -72,10 +76,17 @@ describe(`datepicker-tools`, () => {
   describe(`buildMonth()`, () => {
 
     let calendar: NgbCalendar;
+    let i18n: NgbDatepickerI18n;
 
     beforeAll(() => {
-      TestBed.configureTestingModule({providers: [{provide: NgbCalendar, useClass: NgbCalendarGregorian}]});
+      TestBed.configureTestingModule({
+        providers: [
+          {provide: NgbCalendar, useClass: NgbCalendarGregorian},
+          {provide: NgbDatepickerI18n, useClass: NgbDatepickerI18nDefault}
+        ]
+      });
       calendar = TestBed.get(NgbCalendar);
+      i18n = TestBed.get(NgbDatepickerI18n);
     });
 
     // TODO: this should be automated somehow, ex. generate next 10 years or something
@@ -113,7 +124,7 @@ describe(`datepicker-tools`, () => {
     months.forEach(refMonth => {
       it(`should build month (${refMonth.date.year} - ${refMonth.date.month}) correctly`, () => {
 
-        let month = buildMonth(calendar, refMonth.date, undefined, undefined, 1, undefined);
+        let month = buildMonth(calendar, refMonth.date, { firstDayOfWeek: 1 } as DatepickerViewModel, i18n);
 
         expect(month).toBeTruthy();
         expect(month.year).toEqual(refMonth.date.year);
@@ -142,7 +153,8 @@ describe(`datepicker-tools`, () => {
       const markDisabled: NgbMarkDisabled = (date) => date.day === 2;
 
       // MAY 2017
-      let month = buildMonth(calendar, new NgbDate(2017, 5, 5), undefined, undefined, 1, markDisabled);
+      let month = buildMonth(
+          calendar, new NgbDate(2017, 5, 5), { firstDayOfWeek: 1, markDisabled } as DatepickerViewModel, i18n);
 
       // 2 MAY - disabled
       expect(month.weeks[0].days[0].context.disabled).toBe(false);
@@ -152,13 +164,17 @@ describe(`datepicker-tools`, () => {
 
 
     it(`should call 'markDisabled' with correct arguments`, () => {
-      const mock = {markDisabled: () => false};
+      const mock: {markDisabled: NgbMarkDisabled} = {markDisabled: () => false};
       spyOn(mock, 'markDisabled').and.returnValue(false);
 
       // MAY 2017
-      const minDate = new NgbDate(2017, 5, 10);
-      const maxDate = new NgbDate(2017, 5, 10);
-      buildMonth(calendar, new NgbDate(2017, 5, 5), minDate, maxDate, 1, mock.markDisabled);
+      let state = {
+        firstDayOfWeek: 1,
+        minDate: new NgbDate(2017, 5, 10),
+        maxDate: new NgbDate(2017, 5, 10),
+        markDisabled: mock.markDisabled
+      } as DatepickerViewModel;
+      buildMonth(calendar, new NgbDate(2017, 5, 5), state, i18n);
 
       // called one time, because it should be used only inside min-max range
       expect(mock.markDisabled).toHaveBeenCalledWith(new NgbDate(2017, 5, 10), {year: 2017, month: 5});
@@ -169,8 +185,8 @@ describe(`datepicker-tools`, () => {
       const markDisabled: NgbMarkDisabled = (date) => date.day === 1;
 
       // MAY 2017
-      const minDate = new NgbDate(2017, 5, 3);
-      const month = buildMonth(calendar, new NgbDate(2017, 5, 5), minDate, undefined, 1, markDisabled);
+      let state = { firstDayOfWeek: 1, minDate: new NgbDate(2017, 5, 3), markDisabled } as DatepickerViewModel;
+      const month = buildMonth(calendar, new NgbDate(2017, 5, 5), state, i18n);
 
       // MIN = 2, so 1-2 MAY - disabled
       expect(month.weeks[0].days[0].context.disabled).toBe(true);
@@ -183,8 +199,8 @@ describe(`datepicker-tools`, () => {
       const markDisabled: NgbMarkDisabled = (date) => date.day === 3;
 
       // MAY 2017
-      const maxDate = new NgbDate(2017, 5, 2);
-      const month = buildMonth(calendar, new NgbDate(2017, 5, 5), undefined, maxDate, 1, markDisabled);
+      let state = { firstDayOfWeek: 1, maxDate: new NgbDate(2017, 5, 2), markDisabled } as DatepickerViewModel;
+      const month = buildMonth(calendar, new NgbDate(2017, 5, 5), state, i18n);
 
       // MAX = 2, so 3-4 MAY - disabled
       expect(month.weeks[0].days[0].context.disabled).toBe(false);
@@ -195,12 +211,12 @@ describe(`datepicker-tools`, () => {
 
     it(`should rotate days of the week`, () => {
       // SUN = 7
-      let month = buildMonth(calendar, new NgbDate(2017, 5, 5), undefined, undefined, 7, undefined);
+      let month = buildMonth(calendar, new NgbDate(2017, 5, 5), { firstDayOfWeek: 7 } as DatepickerViewModel, i18n);
       expect(month.weekdays).toEqual([7, 1, 2, 3, 4, 5, 6]);
       expect(month.weeks[0].days[0].date).toEqual(new NgbDate(2017, 4, 30));
 
       // WED = 3
-      month = buildMonth(calendar, new NgbDate(2017, 5, 5), undefined, undefined, 3, undefined);
+      month = buildMonth(calendar, new NgbDate(2017, 5, 5), { firstDayOfWeek: 3 } as DatepickerViewModel, i18n);
       expect(month.weekdays).toEqual([3, 4, 5, 6, 7, 1, 2]);
       expect(month.weeks[0].days[0].date).toEqual(new NgbDate(2017, 4, 26));
     });
@@ -209,102 +225,223 @@ describe(`datepicker-tools`, () => {
   describe(`buildMonths()`, () => {
 
     let calendar: NgbCalendar;
+    let i18n: NgbDatepickerI18n;
 
     beforeAll(() => {
-      TestBed.configureTestingModule({providers: [{provide: NgbCalendar, useClass: NgbCalendarGregorian}]});
+      TestBed.configureTestingModule({
+        providers: [
+          {provide: NgbCalendar, useClass: NgbCalendarGregorian},
+          {provide: NgbDatepickerI18n, useClass: NgbDatepickerI18nDefault}
+        ]
+      });
       calendar = TestBed.get(NgbCalendar);
+      i18n = TestBed.get(NgbDatepickerI18n);
     });
 
     it(`should generate 'displayMonths' number of months`, () => {
-      let displayMonths = 1;
-      let months =
-          buildMonths(calendar, [], new NgbDate(2017, 5, 5), undefined, undefined, displayMonths, 1, undefined, false);
+      let state = { displayMonths: 1, firstDayOfWeek: 1, months: [] } as DatepickerViewModel;
+      let months = buildMonths(calendar, new NgbDate(2017, 5, 5), state, i18n, false);
       expect(months.length).toBe(1);
 
-      displayMonths = 2;
-      months =
-          buildMonths(calendar, [], new NgbDate(2017, 5, 5), undefined, undefined, displayMonths, 1, undefined, false);
+      state.displayMonths = 2;
+      months = buildMonths(calendar, new NgbDate(2017, 5, 5), state, i18n, false);
       expect(months.length).toBe(2);
     });
 
-    it(`should not rebuild existing months by default`, () => {
-      const may = new NgbDate(2017, 5, 5);
-      const june = new NgbDate(2017, 6, 5);
+    const storeMonthsDataStructure = (months: MonthViewModel[]) => {
+      return months.map(month => {
+        const storage = {weeks: month.weeks, weekdays: month.weekdays};
+        const weeks = month.weeks;
+        for (let weekIndex = 0, weeksLength = weeks.length; weekIndex < weeksLength; weekIndex++) {
+          const currentWeek = weeks[weekIndex];
+          storage[`weeks[${weekIndex}]`] = currentWeek;
+          const days = currentWeek.days;
+          storage[`weeks[${weekIndex}].days`] = days;
+          for (let dayIndex = 0, daysLength = days.length; dayIndex < daysLength; dayIndex++) {
+            const currentDay = days[dayIndex];
+            storage[`weeks[${weekIndex}].days[${dayIndex}]`] = currentDay;
+          }
+        }
+        return storage;
+      });
+    };
 
-      // one same month
-      let months = buildMonths(calendar, [], may, undefined, undefined, 1, 1, undefined, false);
-      let newMonths = buildMonths(calendar, months, may, undefined, undefined, 1, 1, undefined, false);
+    const customMatchers: jasmine.CustomMatcherFactories = {
+      toHaveTheSameMonthDataStructureAs: function(util, customEqualityTesters) {
+        return {
+          compare(actualMonthsStorage, expectedMonthsStorage) {
+            try {
+              const monthsNumber = actualMonthsStorage.length;
+              if (expectedMonthsStorage.length !== monthsNumber) {
+                throw 'the number of months';
+              }
+              for (let i = 0; i < monthsNumber; i++) {
+                const storage1 = actualMonthsStorage[i];
+                const storage2 = expectedMonthsStorage[i];
+                const keys1 = Object.keys(storage1);
+                const keys2 = Object.keys(storage2);
+                if (!util.equals(keys2, keys1, customEqualityTesters)) {
+                  throw `the set of keys in months[${i}]: ${keys1} != ${keys2}`;
+                }
+                for (const key of keys1) {
+                  if (storage1[key] !== storage2[key]) {
+                    throw `months[${i}].${key}`;
+                  }
+                }
+              }
+              return {
+                pass: true,
+                message: 'Expected different months data structures, but the same data structure was found.'
+              };
+            } catch (e) {
+              return {
+                pass: false,
+                message: typeof e === 'string' ?
+                    `Expected the same months data structure, but a difference was found in ${e}` :
+                    `${e}`
+              };
+            }
+          }
+        };
+      }
+    };
 
+    beforeEach(function() { jasmine.addMatchers(customMatchers); });
+
+    it(`should reuse the same data structure (force = false)`, () => {
+      let state = { displayMonths: 1, firstDayOfWeek: 1, months: [] } as DatepickerViewModel;
+      let months = buildMonths(calendar, new NgbDate(2017, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(1);
-      expect(newMonths.length).toBe(1);
-      expect(months[0]).toBe(newMonths[0]);
+      let monthsStructure = storeMonthsDataStructure(months);
 
-      // one new month
-      months = buildMonths(calendar, [], may, undefined, undefined, 1, 1, undefined, false);
-      newMonths = buildMonths(calendar, months, june, undefined, undefined, 1, 1, undefined, false);
-
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(1);
-      expect(newMonths.length).toBe(1);
-      expect(months[0]).not.toBe(newMonths[0]);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
 
-      // two same months
-      months = buildMonths(calendar, [], may, undefined, undefined, 2, 1, undefined, false);
-      newMonths = buildMonths(calendar, months, may, undefined, undefined, 2, 1, undefined, false);
-
+      state.displayMonths = 2;
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(2);
-      expect(newMonths.length).toBe(2);
-      expect(months[0]).toBe(newMonths[0]);
-      expect(months[1]).toBe(newMonths[1]);
+      monthsStructure.push(...storeMonthsDataStructure([months[1]]));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
 
-      // two months, one overlaps
-      months = buildMonths(calendar, [], may, undefined, undefined, 2, 1, undefined, false);
-      newMonths = buildMonths(calendar, months, june, undefined, undefined, 2, 1, undefined, false);
-
+      // next month
+      months = buildMonths(calendar, new NgbDate(2018, 6, 5), state, i18n, false);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(2);
-      expect(newMonths.length).toBe(2);
-      expect(months[0]).not.toBe(newMonths[0]);
-      expect(months[1]).not.toBe(newMonths[1]);
-      expect(months[1]).toBe(newMonths[0]);  // june reused
+      // the structures should be swapped:
+      monthsStructure.push(monthsStructure.shift());
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // previous month
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(2);
+      // the structures should be swapped (again):
+      monthsStructure.push(monthsStructure.shift());
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      state.displayMonths = 5;
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      monthsStructure.push(...storeMonthsDataStructure(months.slice(2)));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // go to two months after, the 3 last months are reused as is
+      months = buildMonths(calendar, new NgbDate(2018, 7, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      monthsStructure.unshift(...monthsStructure.splice(2, 3));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // go to two months before, the 3 first months are reused as is
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      monthsStructure.push(...monthsStructure.splice(0, 3));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // completely change the dates, nothing is shifted in monthsStructure
+      months = buildMonths(calendar, new NgbDate(2018, 10, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // keep 2 months
+      state.displayMonths = 2;
+      months = buildMonths(calendar, new NgbDate(2018, 11, 5), state, i18n, false);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(2);
+      monthsStructure = monthsStructure.slice(1, 3);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
     });
 
-    it(`should rebuild existing months with 'rebuild=false'`, () => {
-      const may = new NgbDate(2017, 5, 5);
-      const june = new NgbDate(2017, 6, 5);
-
-      // one same month
-      let months = buildMonths(calendar, [], may, undefined, undefined, 1, 1, undefined, true);
-      let newMonths = buildMonths(calendar, months, may, undefined, undefined, 1, 1, undefined, true);
-
+    it(`should reuse the same data structure (force = true)`, () => {
+      let state = { displayMonths: 1, firstDayOfWeek: 1, months: [] } as DatepickerViewModel;
+      let months = buildMonths(calendar, new NgbDate(2017, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(1);
-      expect(newMonths.length).toBe(1);
-      expect(months[0]).not.toBe(newMonths[0]);
+      let monthsStructure = storeMonthsDataStructure(months);
 
-      // one new month
-      months = buildMonths(calendar, [], may, undefined, undefined, 1, 1, undefined, true);
-      newMonths = buildMonths(calendar, months, june, undefined, undefined, 1, 1, undefined, true);
-
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(1);
-      expect(newMonths.length).toBe(1);
-      expect(months[0]).not.toBe(newMonths[0]);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
 
-      // two same months
-      months = buildMonths(calendar, [], may, undefined, undefined, 2, 1, undefined, true);
-      newMonths = buildMonths(calendar, months, may, undefined, undefined, 2, 1, undefined, true);
-
+      state.displayMonths = 2;
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(2);
-      expect(newMonths.length).toBe(2);
-      expect(months[0]).not.toBe(newMonths[0]);
-      expect(months[1]).not.toBe(newMonths[1]);
+      monthsStructure.push(...storeMonthsDataStructure([months[1]]));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
 
-      // two months, one overlaps
-      months = buildMonths(calendar, [], may, undefined, undefined, 2, 1, undefined, true);
-      newMonths = buildMonths(calendar, months, june, undefined, undefined, 2, 1, undefined, true);
-
+      // next month
+      months = buildMonths(calendar, new NgbDate(2018, 6, 5), state, i18n, true);
+      expect(months).toBe(state.months);
       expect(months.length).toBe(2);
-      expect(newMonths.length).toBe(2);
-      expect(months[0]).not.toBe(newMonths[0]);
-      expect(months[1]).not.toBe(newMonths[1]);
-      expect(months[1]).not.toBe(newMonths[0]);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // previous month
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(2);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      state.displayMonths = 5;
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      monthsStructure.push(...storeMonthsDataStructure(months.slice(2)));
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // go to two months after
+      months = buildMonths(calendar, new NgbDate(2018, 7, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // go to two months before
+      months = buildMonths(calendar, new NgbDate(2018, 5, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // completely change the dates
+      months = buildMonths(calendar, new NgbDate(2018, 10, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(5);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
+
+      // keep 2 months
+      state.displayMonths = 2;
+      months = buildMonths(calendar, new NgbDate(2018, 11, 5), state, i18n, true);
+      expect(months).toBe(state.months);
+      expect(months.length).toBe(2);
+      monthsStructure = monthsStructure.slice(0, 2);
+      expect(storeMonthsDataStructure(months))['toHaveTheSameMonthDataStructureAs'](monthsStructure);
     });
   });
 
@@ -318,23 +455,50 @@ describe(`datepicker-tools`, () => {
     });
 
     const months = [
-      {date: new NgbDate(2017, 1, 10), first: new NgbDate(2016, 12, 26)},
-      {date: new NgbDate(2017, 2, 10), first: new NgbDate(2017, 1, 30)},
-      {date: new NgbDate(2017, 3, 10), first: new NgbDate(2017, 2, 27)},
-      {date: new NgbDate(2017, 4, 10), first: new NgbDate(2017, 3, 27)},
-      {date: new NgbDate(2017, 5, 10), first: new NgbDate(2017, 5, 1)},
-      {date: new NgbDate(2017, 6, 10), first: new NgbDate(2017, 5, 29)},
-      {date: new NgbDate(2017, 7, 10), first: new NgbDate(2017, 6, 26)},
-      {date: new NgbDate(2017, 8, 10), first: new NgbDate(2017, 7, 31)},
-      {date: new NgbDate(2017, 9, 10), first: new NgbDate(2017, 8, 28)},
-      {date: new NgbDate(2017, 10, 10), first: new NgbDate(2017, 9, 25)},
-      {date: new NgbDate(2017, 11, 10), first: new NgbDate(2017, 10, 30)},
-      {date: new NgbDate(2017, 12, 10), first: new NgbDate(2017, 11, 27)}
+      // Mon
+      {start: 1, date: new NgbDate(2017, 1, 10), first: new NgbDate(2016, 12, 26)},
+      {start: 1, date: new NgbDate(2017, 2, 10), first: new NgbDate(2017, 1, 30)},
+      {start: 1, date: new NgbDate(2017, 3, 10), first: new NgbDate(2017, 2, 27)},
+      {start: 1, date: new NgbDate(2017, 4, 10), first: new NgbDate(2017, 3, 27)},
+      {start: 1, date: new NgbDate(2017, 5, 10), first: new NgbDate(2017, 5, 1)},
+      {start: 1, date: new NgbDate(2017, 6, 10), first: new NgbDate(2017, 5, 29)},
+      {start: 1, date: new NgbDate(2017, 7, 10), first: new NgbDate(2017, 6, 26)},
+      {start: 1, date: new NgbDate(2017, 8, 10), first: new NgbDate(2017, 7, 31)},
+      {start: 1, date: new NgbDate(2017, 9, 10), first: new NgbDate(2017, 8, 28)},
+      {start: 1, date: new NgbDate(2017, 10, 10), first: new NgbDate(2017, 9, 25)},
+      {start: 1, date: new NgbDate(2017, 11, 10), first: new NgbDate(2017, 10, 30)},
+      {start: 1, date: new NgbDate(2017, 12, 10), first: new NgbDate(2017, 11, 27)},
+      // Sun
+      {start: 7, date: new NgbDate(2017, 1, 10), first: new NgbDate(2017, 1, 1)},
+      {start: 7, date: new NgbDate(2017, 2, 10), first: new NgbDate(2017, 1, 29)},
+      {start: 7, date: new NgbDate(2017, 3, 10), first: new NgbDate(2017, 2, 26)},
+      {start: 7, date: new NgbDate(2017, 4, 10), first: new NgbDate(2017, 3, 26)},
+      {start: 7, date: new NgbDate(2017, 5, 10), first: new NgbDate(2017, 4, 30)},
+      {start: 7, date: new NgbDate(2017, 6, 10), first: new NgbDate(2017, 5, 28)},
+      {start: 7, date: new NgbDate(2017, 7, 10), first: new NgbDate(2017, 6, 25)},
+      {start: 7, date: new NgbDate(2017, 8, 10), first: new NgbDate(2017, 7, 30)},
+      {start: 7, date: new NgbDate(2017, 9, 10), first: new NgbDate(2017, 8, 27)},
+      {start: 7, date: new NgbDate(2017, 10, 10), first: new NgbDate(2017, 10, 1)},
+      {start: 7, date: new NgbDate(2017, 11, 10), first: new NgbDate(2017, 10, 29)},
+      {start: 7, date: new NgbDate(2017, 12, 10), first: new NgbDate(2017, 11, 26)},
+      // Wed
+      {start: 3, date: new NgbDate(2017, 1, 10), first: new NgbDate(2016, 12, 28)},
+      {start: 3, date: new NgbDate(2017, 2, 10), first: new NgbDate(2017, 2, 1)},
+      {start: 3, date: new NgbDate(2017, 3, 10), first: new NgbDate(2017, 3, 1)},
+      {start: 3, date: new NgbDate(2017, 4, 10), first: new NgbDate(2017, 3, 29)},
+      {start: 3, date: new NgbDate(2017, 5, 10), first: new NgbDate(2017, 4, 26)},
+      {start: 3, date: new NgbDate(2017, 6, 10), first: new NgbDate(2017, 5, 31)},
+      {start: 3, date: new NgbDate(2017, 7, 10), first: new NgbDate(2017, 6, 28)},
+      {start: 3, date: new NgbDate(2017, 8, 10), first: new NgbDate(2017, 7, 26)},
+      {start: 3, date: new NgbDate(2017, 9, 10), first: new NgbDate(2017, 8, 30)},
+      {start: 3, date: new NgbDate(2017, 10, 10), first: new NgbDate(2017, 9, 27)},
+      {start: 3, date: new NgbDate(2017, 11, 10), first: new NgbDate(2017, 11, 1)},
+      {start: 3, date: new NgbDate(2017, 12, 10), first: new NgbDate(2017, 11, 29)}
     ];
 
     months.forEach(month => {
       it(`should return the correct first view date`,
-         () => { expect(getFirstViewDate(calendar, month.date, 1)).toEqual(month.first); });
+         () => { expect(getFirstViewDate(calendar, month.date, month.start)).toEqual(month.first); });
     });
   });
 
@@ -344,35 +508,141 @@ describe(`datepicker-tools`, () => {
     const markDisabled: NgbMarkDisabled = (date, month) => date.day === 15;
 
     it(`should return false if date is invalid`, () => {
-      expect(isDateSelectable(null, null, null, false)).toBeFalsy();
-      expect(isDateSelectable(undefined, null, null, false)).toBeFalsy();
+      let state = { disabled: false } as DatepickerViewModel;
+      expect(isDateSelectable(null, state)).toBeFalsy();
+      expect(isDateSelectable(undefined, state)).toBeFalsy();
     });
 
     it(`should return false if datepicker is disabled`, () => {
-      expect(isDateSelectable(new NgbDate(2016, 11, 10), null, null, true)).toBeFalsy();
-      expect(isDateSelectable(new NgbDate(2017, 11, 10), null, null, true)).toBeFalsy();
-      expect(isDateSelectable(new NgbDate(2018, 11, 10), null, null, true)).toBeFalsy();
+      let state = { disabled: true } as DatepickerViewModel;
+      expect(isDateSelectable(new NgbDate(2016, 11, 10), state)).toBeFalsy();
+      expect(isDateSelectable(new NgbDate(2017, 11, 10), state)).toBeFalsy();
+      expect(isDateSelectable(new NgbDate(2018, 11, 10), state)).toBeFalsy();
     });
 
     it(`should take into account markDisabled values`, () => {
-      expect(isDateSelectable(new NgbDate(2016, 11, 15), null, null, false, markDisabled)).toBeFalsy();
-      expect(isDateSelectable(new NgbDate(2017, 11, 15), null, null, false, markDisabled)).toBeFalsy();
-      expect(isDateSelectable(new NgbDate(2018, 11, 15), null, null, false, markDisabled)).toBeFalsy();
+      let state = { disabled: false, markDisabled } as DatepickerViewModel;
+      expect(isDateSelectable(new NgbDate(2016, 11, 15), state)).toBeFalsy();
+      expect(isDateSelectable(new NgbDate(2017, 11, 15), state)).toBeFalsy();
+      expect(isDateSelectable(new NgbDate(2018, 11, 15), state)).toBeFalsy();
     });
 
     it(`should take into account minDate values`, () => {
-      expect(isDateSelectable(new NgbDate(2017, 11, 10), new NgbDate(2018, 11, 10), null, false)).toBeFalsy();
+      let state = { disabled: false, minDate: new NgbDate(2018, 11, 10) } as DatepickerViewModel;
+      expect(isDateSelectable(new NgbDate(2017, 11, 10), state)).toBeFalsy();
     });
 
     it(`should take into account maxDate values`, () => {
-      expect(isDateSelectable(new NgbDate(2017, 11, 10), null, new NgbDate(2016, 11, 10), false)).toBeFalsy();
+      let state = { disabled: false, maxDate: new NgbDate(2016, 11, 10) } as DatepickerViewModel;
+      expect(isDateSelectable(new NgbDate(2017, 11, 10), state)).toBeFalsy();
     });
 
     it(`should return true for normal values`, () => {
-      expect(isDateSelectable(new NgbDate(2016, 11, 10), null, null, false)).toBeTruthy();
-      expect(isDateSelectable(new NgbDate(2017, 11, 10), null, null, false)).toBeTruthy();
-      expect(isDateSelectable(new NgbDate(2018, 11, 10), null, null, false)).toBeTruthy();
+      let state = { disabled: false } as DatepickerViewModel;
+      expect(isDateSelectable(new NgbDate(2016, 11, 10), state)).toBeTruthy();
+      expect(isDateSelectable(new NgbDate(2017, 11, 10), state)).toBeTruthy();
+      expect(isDateSelectable(new NgbDate(2018, 11, 10), state)).toBeTruthy();
     });
   });
 
+  describe(`generateSelectBoxMonths`, () => {
+
+    let calendar: NgbCalendar;
+
+    beforeAll(() => {
+      TestBed.configureTestingModule({providers: [{provide: NgbCalendar, useClass: NgbCalendarGregorian}]});
+      calendar = TestBed.get(NgbCalendar);
+    });
+
+    const test = (minDate, date, maxDate, result) => {
+      expect(generateSelectBoxMonths(calendar, date, minDate, maxDate)).toEqual(result);
+    };
+
+    it(`should handle edge cases`, () => {
+      test(new NgbDate(2018, 6, 1), null, new NgbDate(2018, 6, 10), []);
+      test(null, null, null, []);
+    });
+
+    it(`should generate months correctly`, () => {
+      // clang-format off
+      // different years
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 1, 1),  new NgbDate(2019, 1, 1),  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(null,                    new NgbDate(2018, 6, 10), null,                     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(null,                    new NgbDate(2018, 1, 1),  new NgbDate(2019, 1, 1),  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 1, 1),  null,                     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+      // same 'min year'
+      test(new NgbDate(2018, 1, 1), new NgbDate(2018, 6, 10), new NgbDate(2020, 1, 2),  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2018, 6, 1), new NgbDate(2018, 6, 10), new NgbDate(2020, 1, 2),  [6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2018, 6, 1), new NgbDate(2018, 6, 10), null,                     [6, 7, 8, 9, 10, 11, 12]);
+
+      // same 'max' year
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 12, 1), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 6, 10), [1, 2, 3, 4, 5, 6]);
+      test(null,                    new NgbDate(2018, 6, 10), new NgbDate(2018, 6, 10), [1, 2, 3, 4, 5, 6]);
+
+      // same 'min' and 'max years'
+      test(new NgbDate(2018, 1, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 12, 1), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2018, 3, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 12, 1), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(new NgbDate(2018, 3, 1), new NgbDate(2018, 6, 10), null,                     [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      test(null,                    new NgbDate(2018, 6, 10), new NgbDate(2018, 8, 1),  [1, 2, 3, 4, 5, 6, 7, 8]);
+      test(new NgbDate(2018, 3, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 8, 1),  [3, 4, 5, 6, 7, 8] );
+      test(new NgbDate(2018, 6, 1), new NgbDate(2018, 6, 10), new NgbDate(2018, 6, 10), [6]);
+      // clang-format on
+    });
+  });
+
+  describe(`generateSelectBoxYears`, () => {
+
+    const test =
+        (minDate, date, maxDate, result) => { expect(generateSelectBoxYears(date, minDate, maxDate)).toEqual(result); };
+    const range = (start, end) => Array.from({length: end - start + 1}, (e, i) => start + i);
+
+    it(`should handle edge cases`, () => {
+      test(new NgbDate(2018, 6, 1), null, new NgbDate(2018, 6, 10), []);
+      test(null, null, null, []);
+    });
+
+    it(`should generate years correctly`, () => {
+      // both 'min' and 'max' are set
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 1, 1), new NgbDate(2019, 1, 1), range(2017, 2019));
+      test(new NgbDate(2000, 1, 1), new NgbDate(2018, 1, 1), new NgbDate(3000, 1, 1), range(2000, 3000));
+      test(new NgbDate(2018, 1, 1), new NgbDate(2018, 1, 1), new NgbDate(2018, 1, 1), [2018]);
+
+      // 'min' is not set
+      test(null, new NgbDate(2018, 1, 1), new NgbDate(2019, 1, 1), range(2008, 2019));
+      test(null, new NgbDate(2018, 1, 1), new NgbDate(3000, 1, 1), range(2008, 3000));
+      test(null, new NgbDate(2018, 1, 1), new NgbDate(2018, 1, 1), range(2008, 2018));
+
+      // 'max' is not set
+      test(new NgbDate(2017, 1, 1), new NgbDate(2018, 1, 1), null, range(2017, 2028));
+      test(new NgbDate(2000, 1, 1), new NgbDate(2018, 1, 1), null, range(2000, 2028));
+      test(new NgbDate(2018, 1, 1), new NgbDate(2018, 1, 1), null, range(2018, 2028));
+
+      // both are not set
+      test(null, new NgbDate(2018, 1, 1), null, range(2008, 2028));
+      test(null, new NgbDate(2000, 1, 1), null, range(1990, 2010));
+    });
+  });
+
+  describe(`isChangedMonth()`, () => {
+
+    it(`should compare valid dates`, () => {
+      expect(isChangedMonth(new NgbDate(2017, 1, 1), new NgbDate(2017, 1, 1))).toBe(false);
+      expect(isChangedMonth(new NgbDate(2017, 1, 1), new NgbDate(2017, 1, 10))).toBe(false);
+      expect(isChangedMonth(new NgbDate(2017, 1, 1), new NgbDate(2017, 2, 1))).toBe(true);
+      expect(isChangedMonth(new NgbDate(2017, 1, 1), new NgbDate(2018, 1, 1))).toBe(true);
+      expect(isChangedMonth(new NgbDate(2017, 1, 1), new NgbDate(2018, 2, 1))).toBe(true);
+    });
+
+    it(`should compare invalid dates`, () => {
+      expect(isChangedMonth(undefined, undefined)).toBe(false);
+      expect(isChangedMonth(null, null)).toBe(false);
+
+      expect(isChangedMonth(new NgbDate(2017, 5, 2), null)).toBe(true);
+      expect(isChangedMonth(new NgbDate(2017, 5, 2), undefined)).toBe(true);
+      expect(isChangedMonth(null, new NgbDate(2017, 5, 2))).toBe(true);
+      expect(isChangedMonth(undefined, new NgbDate(2017, 5, 2))).toBe(true);
+    });
+  });
 });

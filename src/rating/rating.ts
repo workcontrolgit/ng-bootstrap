@@ -13,29 +13,21 @@ import {
   ChangeDetectorRef
 } from '@angular/core';
 import {NgbRatingConfig} from './rating-config';
-import {toString, getValueInRange} from '../util/util';
+import {getValueInRange} from '../util/util';
+import {Key} from '../util/key';
 import {ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
 
-enum Key {
-  End = 35,
-  Home = 36,
-  ArrowLeft = 37,
-  ArrowUp = 38,
-  ArrowRight = 39,
-  ArrowDown = 40
-}
-
 /**
- * Context for the custom star display template
+ * The context for the custom star display template defined in the `starTemplate`.
  */
 export interface StarTemplateContext {
   /**
-   * Star fill percentage. An integer value between 0 and 100
+   * The star fill percentage, an integer in the `[0, 100]` range.
    */
   fill: number;
 
   /**
-   * Index of the star.
+   * Index of the star, starts with `0`.
    */
   index: number;
 }
@@ -47,7 +39,7 @@ const NGB_RATING_VALUE_ACCESSOR = {
 };
 
 /**
- * Rating directive that will take care of visualising a star rating bar.
+ * A directive that helps visualising and interacting with a star rating bar.
  */
 @Component({
   selector: 'ngb-rating',
@@ -70,7 +62,8 @@ const NGB_RATING_VALUE_ACCESSOR = {
     <ng-template ngFor [ngForOf]="contexts" let-index="index">
       <span class="sr-only">({{ index < nextRate ? '*' : ' ' }})</span>
       <span (mouseenter)="enter(index + 1)" (click)="handleClick(index + 1)" [style.cursor]="readonly || disabled ? 'default' : 'pointer'">
-        <ng-template [ngTemplateOutlet]="starTemplate || t" [ngTemplateOutletContext]="contexts[index]"></ng-template>
+        <ng-template [ngTemplateOutlet]="starTemplate || starTemplateFromContent || t" [ngTemplateOutletContext]="contexts[index]">
+        </ng-template>
       </span>
     </ng-template>
   `,
@@ -84,46 +77,51 @@ export class NgbRating implements ControlValueAccessor,
 
 
   /**
-   * Maximal rating that can be given using this widget.
+   * The maximal rating that can be given.
    */
   @Input() max: number;
 
   /**
-   * Current rating. Can be a decimal value like 3.75
+   * The current rating. Could be a decimal value like `3.75`.
    */
   @Input() rate: number;
 
   /**
-   * A flag indicating if rating can be updated.
+   * If `true`, the rating can't be changed.
    */
   @Input() readonly: boolean;
 
   /**
-   * A flag indicating if rating can be reset to 0 on mouse click
+   * If `true`, the rating can be reset to `0` by mouse clicking currently set rating.
    */
   @Input() resettable: boolean;
 
   /**
-   * A template to override star display.
-   * Alternatively put a <ng-template> as the only child of <ngb-rating> element
+   * The template to override the way each star is displayed.
+   *
+   * Alternatively put an `<ng-template>` as the only child of your `<ngb-rating>` element
    */
-  @Input() @ContentChild(TemplateRef) starTemplate: TemplateRef<StarTemplateContext>;
+  @Input() starTemplate: TemplateRef<StarTemplateContext>;
+  @ContentChild(TemplateRef) starTemplateFromContent: TemplateRef<StarTemplateContext>;
 
   /**
-   * An event fired when a user is hovering over a given rating.
-   * Event's payload equals to the rating being hovered over.
+   * An event emitted when the user is hovering over a given rating.
+   *
+   * Event payload equals to the rating being hovered over.
    */
   @Output() hover = new EventEmitter<number>();
 
   /**
-   * An event fired when a user stops hovering over a given rating.
-   * Event's payload equals to the rating of the last item being hovered over.
+   * An event emitted when the user stops hovering over a given rating.
+   *
+   * Event payload equals to the rating of the last item being hovered over.
    */
   @Output() leave = new EventEmitter<number>();
 
   /**
-   * An event fired when a user selects a new rating.
-   * Event's payload equals to the newly selected rating.
+   * An event emitted when the user selects a new rating.
+   *
+   * Event payload equals to the newly selected rating.
    */
   @Output() rateChange = new EventEmitter<number>(true);
 
@@ -149,26 +147,28 @@ export class NgbRating implements ControlValueAccessor,
   handleClick(value: number) { this.update(this.resettable && this.rate === value ? 0 : value); }
 
   handleKeyDown(event: KeyboardEvent) {
-    if (Key[toString(event.which)]) {
-      event.preventDefault();
-
-      switch (event.which) {
-        case Key.ArrowDown:
-        case Key.ArrowLeft:
-          this.update(this.rate - 1);
-          break;
-        case Key.ArrowUp:
-        case Key.ArrowRight:
-          this.update(this.rate + 1);
-          break;
-        case Key.Home:
-          this.update(0);
-          break;
-        case Key.End:
-          this.update(this.max);
-          break;
-      }
+    // tslint:disable-next-line:deprecation
+    switch (event.which) {
+      case Key.ArrowDown:
+      case Key.ArrowLeft:
+        this.update(this.rate - 1);
+        break;
+      case Key.ArrowUp:
+      case Key.ArrowRight:
+        this.update(this.rate + 1);
+        break;
+      case Key.Home:
+        this.update(0);
+        break;
+      case Key.End:
+        this.update(this.max);
+        break;
+      default:
+        return;
     }
+
+    // note 'return' in default case
+    event.preventDefault();
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -218,7 +218,7 @@ export class NgbRating implements ControlValueAccessor,
       return 100;
     }
     if (diff < 1 && diff > 0) {
-      return Number.parseInt((diff * 100).toFixed(2));
+      return parseInt((diff * 100).toFixed(2), 10);
     }
 
     return 0;

@@ -1,10 +1,12 @@
 import {
+  ChangeDetectorRef,
   ComponentFactoryResolver,
   ComponentRef,
   Directive,
   ElementRef,
   EventEmitter,
   forwardRef,
+  Inject,
   Injector,
   Input,
   NgZone,
@@ -13,29 +15,24 @@ import {
   Output,
   Renderer2,
   TemplateRef,
-  ViewContainerRef
+  ViewContainerRef,
+  ApplicationRef
 } from '@angular/core';
 import {ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
-import {Observable} from 'rxjs/Observable';
-import {BehaviorSubject} from 'rxjs/BehaviorSubject';
-import {Subscription} from 'rxjs/Subscription';
-import {letProto} from 'rxjs/operator/let';
-import {_do} from 'rxjs/operator/do';
-import {switchMap} from 'rxjs/operator/switchMap';
-import {fromEvent} from 'rxjs/observable/fromEvent';
-import {positionElements, PlacementArray} from '../util/positioning';
-import {NgbTypeaheadWindow, ResultTemplateContext} from './typeahead-window';
-import {PopupService} from '../util/popup';
-import {toString, isDefined} from '../util/util';
-import {NgbTypeaheadConfig} from './typeahead-config';
+import {DOCUMENT} from '@angular/common';
+import {BehaviorSubject, fromEvent, Observable, Subject, Subscription} from 'rxjs';
+import {map, switchMap, tap} from 'rxjs/operators';
 
-enum Key {
-  Tab = 9,
-  Enter = 13,
-  Escape = 27,
-  ArrowUp = 38,
-  ArrowDown = 40
-}
+import {Live} from '../util/accessibility/live';
+import {ngbAutoClose} from '../util/autoclose';
+import {Key} from '../util/key';
+import {PopupService} from '../util/popup';
+import {PlacementArray, positionElements} from '../util/positioning';
+import {isDefined, toString} from '../util/util';
+
+import {NgbTypeaheadConfig} from './typeahead-config';
+import {NgbTypeaheadWindow, ResultTemplateContext} from './typeahead-window';
+
 
 const NGB_TYPEAHEAD_VALUE_ACCESSOR = {
   provide: NG_VALUE_ACCESSOR,
@@ -44,16 +41,16 @@ const NGB_TYPEAHEAD_VALUE_ACCESSOR = {
 };
 
 /**
- * Payload of the selectItem event.
+ * An event emitted right before an item is selected from the result list.
  */
 export interface NgbTypeaheadSelectItemEvent {
   /**
-   * An item about to be selected
+   * The item from the result list about to be selected.
    */
   item: any;
 
   /**
-   * Function that will prevent item selection if called
+   * Calling this function will prevent item selection from happening.
    */
   preventDefault: () => void;
 }
@@ -61,7 +58,7 @@ export interface NgbTypeaheadSelectItemEvent {
 let nextWindowId = 0;
 
 /**
- * NgbTypeahead directive provides a simple way of creating powerful typeaheads from any text input
+ * A directive providing a simple way of creating powerful typeaheads from any text input.
  */
 @Directive({
   selector: 'input[ngbTypeahead]',
@@ -69,9 +66,8 @@ let nextWindowId = 0;
   host: {
     '(blur)': 'handleBlur()',
     '[class.open]': 'isPopupOpen()',
-    '(document:click)': 'onDocumentClick($event)',
     '(keydown)': 'handleKeyDown($event)',
-    'autocomplete': 'off',
+    '[autocomplete]': 'autocomplete',
     'autocapitalize': 'off',
     'autocorrect': 'off',
     'role': 'combobox',
@@ -87,65 +83,102 @@ export class NgbTypeahead implements ControlValueAccessor,
     OnInit, OnDestroy {
   private _popupService: PopupService<NgbTypeaheadWindow>;
   private _subscription: Subscription;
+  private _closed$ = new Subject();
   private _inputValueBackup: string;
   private _valueChanges: Observable<string>;
   private _resubscribeTypeahead: BehaviorSubject<any>;
   private _windowRef: ComponentRef<NgbTypeaheadWindow>;
   private _zoneSubscription: any;
 
+  /**
+   * The value for the `autocomplete` attribute for the `<input>` element.
+   *
+   * Defaults to `"off"` to disable the native browser autocomplete, but you can override it if necessary.
+   *
+   * @since 2.1.0
+   */
+  @Input() autocomplete = 'off';
 
   /**
-   * A selector specifying the element the tooltip should be appended to.
-   * Currently only supports "body".
+   * A selector specifying the element the typeahead popup will be appended to.
+   *
+   * Currently only supports `"body"`.
    */
   @Input() container: string;
 
   /**
-   * A flag indicating if model values should be restricted to the ones selected from the popup only.
+   * If `true`, model values will not be restricted only to items selected from the popup.
    */
   @Input() editable: boolean;
 
   /**
-   * A flag indicating if the first match should automatically be focused as you type.
+   * If `true`, the first item in the result list will always stay focused while typing.
    */
   @Input() focusFirst: boolean;
 
   /**
-   * A function to convert a given value into string to display in the input field
+   * The function that converts an item from the result list to a `string` to display in the `<input>` field.
+   *
+   * It is called when the user selects something in the popup or the model value changes, so the input needs to
+   * be updated.
    */
-  @Input() inputFormatter: (value: any) => string;
+  @Input() inputFormatter: (item: any) => string;
 
   /**
-   * A function to transform the provided observable text into the array of results.  Note that the "this" argument
-   * is undefined so you need to explicitly bind it to a desired "this" target.
+   * The function that converts a stream of text values from the `<input>` element to the stream of the array of items
+   * to display in the typeahead popup.
+   *
+   * If the resulting observable emits a non-empty array - the popup will be shown. If it emits an empty array - the
+   * popup will be closed.
+   *
+   * See the [basic example](#/components/typeahead/examples#basic) for more details.
+   *
+   * Note that the `this` argument is `undefined` so you need to explicitly bind it to a desired "this" target.
    */
   @Input() ngbTypeahead: (text: Observable<string>) => Observable<any[]>;
 
   /**
-   * A function to format a given result before display. This function should return a formatted string without any
-   * HTML markup
+   * The function that converts an item from the result list to a `string` to display in the popup.
+   *
+   * Must be provided, if your `ngbTypeahead` returns something other than `Observable<string[]>`.
+   *
+   * Alternatively for more complex markup in the popup you should use `resultTemplate`.
    */
-  @Input() resultFormatter: (value: any) => string;
+  @Input() resultFormatter: (item: any) => string;
 
   /**
-   * A template to override a matching result default display
+   * The template to override the way resulting items are displayed in the popup.
+   *
+   * See the [ResultTemplateContext](#/components/typeahead/api#ResultTemplateContext) for the template context.
+   *
+   * Also see the [template for results demo](#/components/typeahead/examples#template) for more details.
    */
   @Input() resultTemplate: TemplateRef<ResultTemplateContext>;
 
   /**
-   * Show hint when an option in the result list matches.
+   * If `true`, will show the hint in the `<input>` when an item in the result list matches.
    */
   @Input() showHint: boolean;
 
-  /** Placement of a typeahead accepts:
-   *    "top", "top-left", "top-right", "bottom", "bottom-left", "bottom-right",
-   *    "left", "left-top", "left-bottom", "right", "right-top", "right-bottom"
-   * and array of above values.
-  */
+  /**
+   * The preferred placement of the typeahead.
+   *
+   * Possible values are `"top"`, `"top-left"`, `"top-right"`, `"bottom"`, `"bottom-left"`,
+   * `"bottom-right"`, `"left"`, `"left-top"`, `"left-bottom"`, `"right"`, `"right-top"`,
+   * `"right-bottom"`
+   *
+   * Accepts an array of strings or a string with space separated possible values.
+   *
+   * The default order of preference is `"bottom-left bottom-right top-left top-right"`
+   *
+   * Please see the [positioning overview](#/positioning) for more details.
+   */
   @Input() placement: PlacementArray = 'bottom-left';
 
   /**
-   * An event emitted when a match is selected. Event payload is of type NgbTypeaheadSelectItemEvent.
+   * An event emitted right before an item is selected from the result list.
+   *
+   * Event payload is of type [`NgbTypeaheadSelectItemEvent`](#/components/typeahead/api#NgbTypeaheadSelectItemEvent).
    */
   @Output() selectItem = new EventEmitter<NgbTypeaheadSelectItemEvent>();
 
@@ -156,21 +189,23 @@ export class NgbTypeahead implements ControlValueAccessor,
   private _onChange = (_: any) => {};
 
   constructor(
-      private _elementRef: ElementRef, private _viewContainerRef: ViewContainerRef, private _renderer: Renderer2,
-      private _injector: Injector, componentFactoryResolver: ComponentFactoryResolver, config: NgbTypeaheadConfig,
-      ngZone: NgZone) {
+      private _elementRef: ElementRef<HTMLInputElement>, private _viewContainerRef: ViewContainerRef,
+      private _renderer: Renderer2, private _injector: Injector, componentFactoryResolver: ComponentFactoryResolver,
+      config: NgbTypeaheadConfig, ngZone: NgZone, private _live: Live, @Inject(DOCUMENT) private _document: any,
+      private _ngZone: NgZone, private _changeDetector: ChangeDetectorRef, private _applicationRef: ApplicationRef) {
     this.container = config.container;
     this.editable = config.editable;
     this.focusFirst = config.focusFirst;
     this.showHint = config.showHint;
     this.placement = config.placement;
 
-    this._valueChanges = fromEvent(_elementRef.nativeElement, 'input', ($event) => $event.target.value);
+    this._valueChanges = fromEvent<Event>(_elementRef.nativeElement, 'input')
+                             .pipe(map($event => ($event.target as HTMLInputElement).value));
 
     this._resubscribeTypeahead = new BehaviorSubject(null);
 
     this._popupService = new PopupService<NgbTypeaheadWindow>(
-        NgbTypeaheadWindow, _injector, _viewContainerRef, _renderer, componentFactoryResolver);
+        NgbTypeaheadWindow, _injector, _viewContainerRef, _renderer, componentFactoryResolver, _applicationRef);
 
     this._zoneSubscription = ngZone.onStable.subscribe(() => {
       if (this.isPopupOpen()) {
@@ -182,19 +217,19 @@ export class NgbTypeahead implements ControlValueAccessor,
   }
 
   ngOnInit(): void {
-    const inputValues$ = _do.call(this._valueChanges, value => {
-      this._inputValueBackup = value;
+    const inputValues$ = this._valueChanges.pipe(tap(value => {
+      this._inputValueBackup = this.showHint ? value : null;
       if (this.editable) {
         this._onChange(value);
       }
-    });
-    const results$ = letProto.call(inputValues$, this.ngbTypeahead);
-    const processedResults$ = _do.call(results$, () => {
+    }));
+    const results$ = inputValues$.pipe(this.ngbTypeahead);
+    const processedResults$ = results$.pipe(tap(() => {
       if (!this.editable) {
         this._onChange(undefined);
       }
-    });
-    const userInput$ = switchMap.call(this._resubscribeTypeahead, () => processedResults$);
+    }));
+    const userInput$ = this._resubscribeTypeahead.pipe(switchMap(() => processedResults$));
     this._subscription = this._subscribeToUserInput(userInput$);
   }
 
@@ -208,16 +243,15 @@ export class NgbTypeahead implements ControlValueAccessor,
 
   registerOnTouched(fn: () => any): void { this._onTouched = fn; }
 
-  writeValue(value) { this._writeInputValue(this._formatItemForInput(value)); }
+  writeValue(value) {
+    this._writeInputValue(this._formatItemForInput(value));
+    if (this.showHint) {
+      this._inputValueBackup = value;
+    }
+  }
 
   setDisabledState(isDisabled: boolean): void {
     this._renderer.setProperty(this._elementRef.nativeElement, 'disabled', isDisabled);
-  }
-
-  onDocumentClick(event) {
-    if (event.target !== this._elementRef.nativeElement) {
-      this.dismissPopup();
-    }
   }
 
   /**
@@ -225,8 +259,12 @@ export class NgbTypeahead implements ControlValueAccessor,
    */
   dismissPopup() {
     if (this.isPopupOpen()) {
+      this._resubscribeTypeahead.next(null);
       this._closePopup();
-      this._writeInputValue(this._inputValueBackup);
+      if (this.showHint && this._inputValueBackup !== null) {
+        this._writeInputValue(this._inputValueBackup);
+      }
+      this._changeDetector.markForCheck();
     }
   }
 
@@ -245,34 +283,28 @@ export class NgbTypeahead implements ControlValueAccessor,
       return;
     }
 
-    if (Key[toString(event.which)]) {
-      switch (event.which) {
-        case Key.ArrowDown:
+    // tslint:disable-next-line:deprecation
+    switch (event.which) {
+      case Key.ArrowDown:
+        event.preventDefault();
+        this._windowRef.instance.next();
+        this._showHint();
+        break;
+      case Key.ArrowUp:
+        event.preventDefault();
+        this._windowRef.instance.prev();
+        this._showHint();
+        break;
+      case Key.Enter:
+      case Key.Tab:
+        const result = this._windowRef.instance.getActive();
+        if (isDefined(result)) {
           event.preventDefault();
-          this._windowRef.instance.next();
-          this._showHint();
-          break;
-        case Key.ArrowUp:
-          event.preventDefault();
-          this._windowRef.instance.prev();
-          this._showHint();
-          break;
-        case Key.Enter:
-        case Key.Tab:
-          const result = this._windowRef.instance.getActive();
-          if (isDefined(result)) {
-            event.preventDefault();
-            event.stopPropagation();
-            this._selectResult(result);
-          }
-          this._closePopup();
-          break;
-        case Key.Escape:
-          event.preventDefault();
-          this._resubscribeTypeahead.next(null);
-          this.dismissPopup();
-          break;
-      }
+          event.stopPropagation();
+          this._selectResult(result);
+        }
+        this._closePopup();
+        break;
     }
   }
 
@@ -287,10 +319,17 @@ export class NgbTypeahead implements ControlValueAccessor,
       if (this.container === 'body') {
         window.document.querySelector(this.container).appendChild(this._windowRef.location.nativeElement);
       }
+
+      this._changeDetector.markForCheck();
+
+      ngbAutoClose(
+          this._ngZone, this._document, 'outside', () => this.dismissPopup(), this._closed$,
+          [this._elementRef.nativeElement, this._windowRef.location.nativeElement]);
     }
   }
 
   private _closePopup() {
+    this._closed$.next();
     this._popupService.close();
     this._windowRef = null;
     this.activeDescendant = undefined;
@@ -313,7 +352,7 @@ export class NgbTypeahead implements ControlValueAccessor,
   }
 
   private _showHint() {
-    if (this.showHint && this._inputValueBackup != null) {
+    if (this.showHint && this._windowRef.instance.hasActive() && this._inputValueBackup != null) {
       const userInputLowerCase = this._inputValueBackup.toLowerCase();
       const formattedVal = this._formatItemForInput(this._windowRef.instance.getActive());
 
@@ -322,13 +361,13 @@ export class NgbTypeahead implements ControlValueAccessor,
         this._elementRef.nativeElement['setSelectionRange'].apply(
             this._elementRef.nativeElement, [this._inputValueBackup.length, formattedVal.length]);
       } else {
-        this.writeValue(this._windowRef.instance.getActive());
+        this._writeInputValue(formattedVal);
       }
     }
   }
 
   private _formatItemForInput(item: any): string {
-    return item && this.inputFormatter ? this.inputFormatter(item) : toString(item);
+    return item != null && this.inputFormatter ? this.inputFormatter(item) : toString(item);
   }
 
   private _writeInputValue(value: string): void {
@@ -350,13 +389,19 @@ export class NgbTypeahead implements ControlValueAccessor,
         if (this.resultTemplate) {
           this._windowRef.instance.resultTemplate = this.resultTemplate;
         }
-        this._showHint();
+        this._windowRef.instance.resetActive();
 
         // The observable stream we are subscribing to might have async steps
         // and if a component containing typeahead is using the OnPush strategy
         // the change detection turn wouldn't be invoked automatically.
         this._windowRef.changeDetectorRef.detectChanges();
+
+        this._showHint();
       }
+
+      // live announcer
+      const count = results ? results.length : 0;
+      this._live.say(count === 0 ? 'No results available' : `${count} result${count === 1 ? '' : 's'} available`);
     });
   }
 
